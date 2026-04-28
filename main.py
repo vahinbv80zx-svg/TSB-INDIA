@@ -7,6 +7,7 @@ import os
 # --- Configuration ---
 TOKEN = os.getenv('DISCORD_TOKEN')
 OWNER_ID = 1025704740828491806 
+APPEAL_LINK = "https://discord.gg/H2HuWf2Ks"
 
 class MyBot(discord.Client):
     def __init__(self):
@@ -59,7 +60,7 @@ class BlacklistApproval(discord.ui.View):
         except: pass
         await interaction.response.edit_message(content="❌ Request Denied.", view=None)
 
-# --- The Actual Styled Blacklist Action ---
+# --- The Actual Blacklist Action ---
 async def run_blacklist_logic(channel, requester, target, reason, role_id):
     original_roles = ",".join([str(r.id) for r in target.roles if not r.is_default()])
     
@@ -68,12 +69,17 @@ async def run_blacklist_logic(channel, requester, target, reason, role_id):
                          (target.id, target.display_name, original_roles, reason))
         await db.commit()
     
+    # DM Status Logic
+    dm_status = "✅ Approved"
+    try:
+        await target.send(f"🚫 You have been blacklisted.\n**Reason:** {reason}\n**APPEAL HERE:** {APPEAL_LINK}")
+    except discord.Forbidden:
+        dm_status = "❌ Rejected (DMs Closed)"
+
     bl_role = target.guild.get_role(int(role_id))
     try:
-        # Edit the user
         await target.edit(roles=[bl_role], nick="Blacklisted")
         
-        # --- STYLE MATCH: RED BLACKLIST EMBED ---
         embed = discord.Embed(title="🚫 Member Blacklisted (via Request)", color=0xed4245)
         embed.description = f"{target.mention} has been blacklisted"
         embed.add_field(name="User", value=f"{target.mention}\n({target.id})", inline=False)
@@ -81,15 +87,15 @@ async def run_blacklist_logic(channel, requester, target, reason, role_id):
         embed.add_field(name="Accepted By", value=f"<@{OWNER_ID}>", inline=True)
         embed.add_field(name="Category", value="⚖️ Appealable", inline=False)
         embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="DM Status", value=dm_status, inline=True)
         embed.add_field(name="Roles Stripped", value=f"{len(original_roles.split(',')) if original_roles else 0} roles stored", inline=False)
         
         embed.set_thumbnail(url=target.display_avatar.url)
-        # Matches your timestamp format
         embed.set_footer(text=datetime.datetime.now().strftime('%m/%d/%Y %I:%M %p'))
         
         await channel.send(embed=embed)
     except Exception as e:
-        await channel.send(f"❌ Failed to edit user: {e}")
+        await channel.send(f"❌ Error: {e}")
 
 # --- Commands ---
 
@@ -97,18 +103,15 @@ async def run_blacklist_logic(channel, requester, target, reason, role_id):
 async def setup(interaction: discord.Interaction, role_id: str):
     if interaction.user.id != OWNER_ID:
         return await interaction.response.send_message("❌ Owner only.", ephemeral=True)
-    
     async with aiosqlite.connect("blacklist.db") as db:
         await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('blacklist_role', ?)", (role_id,))
         await db.commit()
-    
     await interaction.response.send_message(f"✅ Blacklist Role set to `{role_id}`", ephemeral=True)
 
 @bot.tree.command(name="permission", description="Owner Only: Authorize a user ID")
 async def permission(interaction: discord.Interaction, user_id: str):
     if interaction.user.id != OWNER_ID:
         return await interaction.response.send_message("❌ Owner only.", ephemeral=True)
-    
     async with aiosqlite.connect("blacklist.db") as db:
         await db.execute("INSERT OR IGNORE INTO bot_permissions VALUES (?)", (int(user_id),))
         await db.commit()
@@ -120,7 +123,6 @@ async def blacklist(interaction: discord.Interaction, member: discord.Member, re
         return await interaction.response.send_message("❌ No permission.", ephemeral=True)
 
     await interaction.response.defer(ephemeral=True)
-
     async with aiosqlite.connect("blacklist.db") as db:
         async with db.execute("SELECT value FROM settings WHERE key = 'blacklist_role'") as cursor:
             row = await cursor.fetchone()
@@ -131,20 +133,14 @@ async def blacklist(interaction: discord.Interaction, member: discord.Member, re
         await run_blacklist_logic(interaction.channel, interaction.user, member, reason, role_id)
         await interaction.followup.send("✅ Blacklist executed.", ephemeral=True)
     else:
-        try:
-            owner = await bot.fetch_user(OWNER_ID)
-            view = BlacklistApproval(interaction.user, member, reason, interaction.channel, role_id)
-            
-            # --- REQUEST EMBED: CLEAN WHITE ---
-            req_embed = discord.Embed(title="🛡️ New Blacklist Request", color=0xFFFFFF)
-            req_embed.add_field(name="Target", value=member.mention, inline=True)
-            req_embed.add_field(name="Requester", value=interaction.user.mention, inline=True)
-            req_embed.add_field(name="Reason", value=reason, inline=False)
-            
-            await owner.send(embed=req_embed, view=view)
-            await interaction.followup.send("📨 Request sent to owner.")
-        except:
-            await interaction.followup.send("❌ Failed to send request to owner.")
+        owner = await bot.fetch_user(OWNER_ID)
+        view = BlacklistApproval(interaction.user, member, reason, interaction.channel, role_id)
+        req_embed = discord.Embed(title="🛡️ New Blacklist Request", color=0xFFFFFF)
+        req_embed.add_field(name="Target", value=member.mention, inline=True)
+        req_embed.add_field(name="Requester", value=interaction.user.mention, inline=True)
+        req_embed.add_field(name="Reason", value=reason, inline=False)
+        await owner.send(embed=req_embed, view=view)
+        await interaction.followup.send("📨 Request sent to owner.")
 
 @bot.tree.command(name="unblacklist", description="Restore a member")
 async def unblacklist(interaction: discord.Interaction, member: discord.Member):
@@ -152,13 +148,12 @@ async def unblacklist(interaction: discord.Interaction, member: discord.Member):
         return await interaction.response.send_message("❌ No permission.", ephemeral=True)
 
     await interaction.response.defer()
-
     async with aiosqlite.connect("blacklist.db") as db:
         async with db.execute("SELECT nickname, roles FROM blacklisted_users WHERE user_id = ?", (member.id,)) as cursor:
             row = await cursor.fetchone()
             if not row: return await interaction.followup.send("❌ Not blacklisted.")
             
-            old_nick, roles_raw = row
+            old_nick, roles_raw, reason = row[0], row[1], row[2]
             role_ids = [int(rid) for rid in roles_raw.split(",") if rid]
             restore = [interaction.guild.get_role(rid) for rid in role_ids if interaction.guild.get_role(rid)]
 
@@ -172,7 +167,8 @@ async def unblacklist(interaction: discord.Interaction, member: discord.Member):
                 embed.description = f"{member.mention} has been unblacklisted and roles restored"
                 embed.add_field(name="User", value=f"{member.mention} ({member.id})", inline=False)
                 embed.add_field(name="Responsible Moderator", value=interaction.user.mention, inline=False)
-                embed.add_field(name="Reason", value="Request approved.", inline=False)
+                embed.add_field(name="Category", value="⚖️ Appeal Approved", inline=False)
+                embed.add_field(name="Reason", value="Blacklist removed by moderator.", inline=False)
                 embed.add_field(name="Roles Restored", value=f"{len(restore)} roles", inline=False)
                 embed.add_field(name="Nickname", value=f"✅ Restored to: {old_nick}", inline=False)
                 
