@@ -1,5 +1,4 @@
-
-Import discord
+import discord
 from discord import app_commands
 import aiosqlite
 import datetime
@@ -188,3 +187,4 @@ async def on_ready():
     print(f'Logged in as {bot.user}')
 
 bot.run(TOKEN)
+
