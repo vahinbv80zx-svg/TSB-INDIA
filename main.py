@@ -1,9 +1,10 @@
-import discord
+
+Import discord
 from discord import app_commands
 import aiosqlite
 import datetime
 import os
-import aiohttp
+
 # --- Configuration ---
 TOKEN = os.getenv('DISCORD_TOKEN')
 OWNER_ID = 1025704740828491806 
@@ -185,20 +186,5 @@ async def unblacklist(interaction: discord.Interaction, member: discord.Member):
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}')
-    
-    # The URL you provided
-    gif_url = "https://cdn.discordapp.com/attachments/1046058165067853874/1499005993936355508/tdl5zQl.gif?ex=69f3399f&is=69f1e81f&hm=2cbeaf585c5c7667417062d134730ce63f8daf7b2c5b73279fdd20d117d6907c&"
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(gif_url) as response:
-                if response.status == 200:
-                    avatar_bytes = await response.read()
-                    await bot.user.edit(avatar=avatar_bytes)
-                    print("✅ Animated profile picture updated successfully!")
-                else:
-                    print(f"❌ Failed to fetch GIF. HTTP Status: {response.status}")
-    except Exception as e:
-        print(f"❌ Error updating avatar: {e}")
-bot.run(TOKEN)
 
+bot.run(TOKEN)
