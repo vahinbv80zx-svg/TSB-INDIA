@@ -69,14 +69,17 @@ async def run_blacklist_logic(channel, requester, target, reason, role_id):
                          (target.id, target.display_name, original_roles, reason))
         await db.commit()
     
+    # DM Status Logic - Link removed as requested
     dm_status = "✅ Approved"
     try:
-        await target.send(f"🚫 You have been blacklisted.\n**Reason:** {reason}\n**APPEAL HERE:** {APPEAL_LINK}")
+        # Sending the clean message without the server link
+        await target.send(f"🚫 **Notice:** You have been blacklisted from the server.\n**Reason:** {reason}\n\nIf you believe this was a mistake, please contact a staff member directly.")
     except:
         dm_status = "❌ Rejected (DMs Closed)"
 
     bl_role = target.guild.get_role(int(role_id))
     try:
+        # Move the bot's role to the top of the list in Discord settings to avoid 403 errors!
         await target.edit(roles=[bl_role], nick="Blacklisted")
         
         embed = discord.Embed(title="🚫 Member Blacklisted (via Request)", color=0xed4245)
@@ -94,7 +97,9 @@ async def run_blacklist_logic(channel, requester, target, reason, role_id):
         
         await channel.send(embed=embed)
     except Exception as e:
-        await channel.send(f"❌ Error executing blacklist: {e}")
+        # If the bot fails here, it's 100% a Role Hierarchy issue
+        await channel.send(f"❌ **Missing Permissions:** I couldn't edit this user. Please move my role to the VERY TOP of the roles list.\nError: `{e}`")
+
 
 # --- Commands ---
 
